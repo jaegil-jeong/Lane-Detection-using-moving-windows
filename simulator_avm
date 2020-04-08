@@ -1,0 +1,152 @@
+import socket
+import cv2
+import numpy as np
+import time
+from lidar_util import get_lidar, visualize_lidar_img, transform_lidar2cam
+from cam_util import get_img
+
+params_cam1 = {
+    "SOCKET_TYPE": 'JPG',
+    "WIDTH": 320, # image width # 값 같아야함 주의
+    "HEIGHT": 240, # image height
+    "FOV": 40, # Field of view
+    "localIP": "127.0.0.1", # 시뮬레이터의 DST 값
+    "localPort": 1232, # 시뮬레이터의 DST 값
+    "Block_SIZE": int(65000),
+    "X": 0.6, # meter
+    "Y": 0,
+    "Z": 0.8,
+    "YAW": 0, # deg
+    "PITCH": -10,
+    "ROLL": 0
+}
+
+params_cam2 = {
+    "SOCKET_TYPE": 'JPG',
+    "WIDTH": 320, # image width # 값 같아야함 주의
+    "HEIGHT": 240, # image height
+    "FOV": 180, # Field of view
+    "localIP": "127.0.0.1", # 시뮬레이터의 DST 값
+    "localPort": 1231, # 시뮬레이터의 DST 값
+    "Block_SIZE": int(65000),
+    "X": 0.1, # meter
+    "Y": -0.5,
+    "Z": 0.8,
+    "YAW": -90, # deg
+    "PITCH": -10,
+    "ROLL": 0
+}
+
+params_cam3 = {
+    "SOCKET_TYPE": 'JPG',
+    "WIDTH": 320, # image width # 값 같아야함 주의
+    "HEIGHT": 240, # image height
+    "FOV": 180, # Field of view
+    "localIP": "127.0.0.1", # 시뮬레이터의 DST 값
+    "localPort": 1230, # 시뮬레이터의 DST 값
+    "Block_SIZE": int(65000),
+    "X": 0.1, # meter
+    "Y": 0.5,
+    "Z": 0.8,
+    "YAW": 90, # deg
+    "PITCH": -10,
+    "ROLL": 0
+}
+
+params_cam4 = {
+    "SOCKET_TYPE": 'JPG',
+    "WIDTH": 320, # image width # 값 같아야함 주의
+    "HEIGHT": 240, # image height
+    "FOV": 180, # Field of view
+    "localIP": "127.0.0.1", # 시뮬레이터의 DST 값
+    "localPort": 1229, # 시뮬레이터의 DST 값
+    "Block_SIZE": int(65000),
+    "X": -0.8, # meter
+    "Y": 0,
+    "Z": 0.8,
+    "YAW": 0, # deg
+    "PITCH": -10,
+    "ROLL": 0
+}
+params_visual = {
+    "USE_INTENSITY_MAP": True,
+    "DISTANCE_MAX": 50, # the maximum distance shown on the distance map
+    "COLORMAP": cv2.COLORMAP_RAINBOW, # a type of color maps
+    "DILATION_KERNAL": cv2.MORPH_ELLIPSE, # cv2.MORPH_RECT, cv2.MORPH_ELLIPSE, cv2.MORPH_CROSS
+    "DILATION_SIZE": 5 # a type of color maps
+}
+
+
+UDP_cam1 = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
+UDP_cam1.bind((params_cam1["localIP"], params_cam1["localPort"]))
+
+UDP_cam2 = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
+UDP_cam2.bind((params_cam2["localIP"], params_cam2["localPort"]))
+
+UDP_cam3 = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
+UDP_cam3.bind((params_cam3["localIP"], params_cam3["localPort"]))
+
+UDP_cam4 = socket.socket(family=socket.AF_INET, type=socket.SOCK_DGRAM)
+UDP_cam4.bind((params_cam4["localIP"], params_cam4["localPort"]))
+#
+def perspective_warp(img,
+                     dst_size=(640,480),
+                     src=np.float32([(0.43,0.65),(0.58,0.65),(0.1,1),(1,1)]),
+                     dst= np.float32([(0,0), (1,0), (0,1), (1,1)])):
+    img_size = np.float32([(img.shape[1], img.shape[0])])
+    src = img_size*src
+    dst = dst* np.float32(dst_size)
+    M = cv2.getPerspectiveTransform(src,dst)
+    warped =cv2.warpPerspective(img, M, dst_size,flags=cv2.INTER_LINEAR)
+
+    return warped
+
+def inv_perspective_warp(img,
+                         dst_size=(1280,720),
+                         src=np.float32([(0, 0), (1, 0), (0, 1), (1, 1)]),
+                         dst=np.float32([(0.2, 0.65), (0.65, 0.65), (0.1, 1), (1, 1)])):
+    img_size = np.float32([(img.shape[1], img.shape[0])])
+    src = src*img_size
+    dst = dst* np.float32(dst_size)
+    inv_M = cv2.getPerspectiveTransform(dst, src)
+    inv_wapred = cv2.warpPerspective(img, inv_M, dst_size,flags=cv2.INTER_LINEAR)
+    return inv_wapred
+
+def drawPoints(img, src):
+    img_size = np.float32([(img.shape[1], img.shape[0])])
+    # src = np.float32([(0.43, 0.65), (0.58, 0.65), (0.1, 1), (1, 1)])
+    src = src * img_size
+    for x in range(0, 4):
+        cv2.circle(img, (int(src[x][0]), int(src[x][1])), 6, (0, 0, 255), cv2.FILLED)
+    return img
+
+def main():
+
+    while(1):
+
+        # measurement
+        t_s1 = time.time()
+        center = get_img(UDP_cam1, params_cam1)
+        left =get_img(UDP_cam2, params_cam2)
+        right =get_img(UDP_cam3, params_cam3)
+        rear =get_img(UDP_cam4, params_cam4)
+        center = drawPoints(center,np.float32([(0.23, 0.55), (0.8, 0.55), (0, 1), (1, 1)]))
+        warp_center = perspective_warp(center,src=np.float32([(0.23, 0.55), (0.8, 0.55), (0, 1), (1, 1)]))
+        height, width, channel = left.shape
+        matrix = cv2.getRotationMatrix2D((width / 2, height / 2), 90, 1)
+        left = cv2.warpAffine(left, matrix, (width, height))
+
+        cv2.imshow('warp_center', cv2.resize(center, (640,480), interpolation=cv2.INTER_LINEAR))
+        cv2.imshow('left', cv2.resize(left, (params_cam2["WIDTH"], params_cam2["HEIGHT"]), interpolation=cv2.INTER_LINEAR))
+        cv2.imshow('Right',
+                   cv2.resize(right, (params_cam3["WIDTH"], params_cam3["HEIGHT"]), interpolation=cv2.INTER_LINEAR))
+        cv2.imshow('Rear',
+                   cv2.resize(rear, (params_cam4["WIDTH"], params_cam4["HEIGHT"]), interpolation=cv2.INTER_LINEAR))
+        cv2.waitKey(1)
+
+    UDP_cam.close()
+
+    
+if __name__ == '__main__':
+
+    main()
